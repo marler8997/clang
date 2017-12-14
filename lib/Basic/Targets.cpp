@@ -5187,6 +5187,7 @@ class ARMTargetInfo : public TargetInfo {
     case llvm::Triple::OpenBSD:
       WCharType = SignedInt;
       break;
+    case llvm::Triple::WinCE:
     case llvm::Triple::Win32:
       WCharType = UnsignedShort;
       break;
@@ -5416,7 +5417,7 @@ public:
       } else {
         setABI("apcs-gnu");
       }
-    } else if (Triple.isOSWindows()) {
+    } else if (Triple.getOS() == llvm::Triple::Win32) {
       // FIXME: this is invalid for WindowsCE
       setABI("aapcs");
     } else {
@@ -6090,6 +6091,75 @@ public:
     Builder.defineMacro("__ARM_BIG_ENDIAN");
     ARMTargetInfo::getTargetDefines(Opts, Builder);
   }
+};
+
+class WinceARMTargetInfo : public OSTargetInfo<ARMleTargetInfo> {
+protected:
+    void getOSDefines(const LangOptions &Opts, const llvm::Triple &Triple,
+        MacroBuilder &Builder) const override {
+        Builder.defineMacro("_WIN32_WCE");
+    }
+    void getVisualStudioDefines(const LangOptions &Opts,
+        MacroBuilder &Builder) const {
+        if (Opts.CPlusPlus) {
+            if (Opts.RTTIData)
+                Builder.defineMacro("_CPPRTTI");
+
+            if (Opts.CXXExceptions)
+                Builder.defineMacro("_CPPUNWIND");
+        }
+
+        if (Opts.Bool)
+            Builder.defineMacro("__BOOL_DEFINED");
+
+        if (!Opts.CharIsSigned)
+            Builder.defineMacro("_CHAR_UNSIGNED");
+
+        // FIXME: POSIXThreads isn't exactly the option this should be defined for,
+        //        but it works for now.
+        if (Opts.POSIXThreads)
+            Builder.defineMacro("_MT");
+
+        if (Opts.MSCompatibilityVersion) {
+            Builder.defineMacro("_MSC_VER",
+                Twine(Opts.MSCompatibilityVersion / 100000));
+            Builder.defineMacro("_MSC_FULL_VER", Twine(Opts.MSCompatibilityVersion));
+            // FIXME We cannot encode the revision information into 32-bits
+            Builder.defineMacro("_MSC_BUILD", Twine(1));
+
+            if (Opts.CPlusPlus11 && Opts.isCompatibleWithMSVC(LangOptions::MSVC2015))
+                Builder.defineMacro("_HAS_CHAR16_T_LANGUAGE_SUPPORT", Twine(1));
+
+            if (Opts.isCompatibleWithMSVC(LangOptions::MSVC2015)) {
+                if (Opts.CPlusPlus1z)
+                    Builder.defineMacro("_MSVC_LANG", "201403L");
+                else if (Opts.CPlusPlus14)
+                    Builder.defineMacro("_MSVC_LANG", "201402L");
+            }
+        }
+
+        if (Opts.MicrosoftExt) {
+            Builder.defineMacro("_MSC_EXTENSIONS");
+
+            if (Opts.CPlusPlus11) {
+                Builder.defineMacro("_RVALUE_REFERENCES_V2_SUPPORTED");
+                Builder.defineMacro("_RVALUE_REFERENCES_SUPPORTED");
+                Builder.defineMacro("_NATIVE_NULLPTR_SUPPORTED");
+            }
+        }
+
+        Builder.defineMacro("_INTEGRAL_MAX_BITS", "64");
+    }
+
+public:
+    WinceARMTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
+        : OSTargetInfo<ARMleTargetInfo>(Triple, Opts)
+    {
+        TargetName = "WinceARMTargetInfo";
+        llvm::errs() << "WinceARMTargetInfo!!!!, ObjectFormat = " << Triple.getObjectFormat() << "\n";
+        WCharType = UnsignedShort;
+        llvm::errs() << "UnsignedShort = " << UnsignedShort << " getWCharWidth() = " << getWCharWidth() << "\n";
+    }
 };
 
 class WindowsARMTargetInfo : public WindowsTargetInfo<ARMleTargetInfo> {
@@ -9593,6 +9663,8 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
       return new RTEMSTargetInfo<ARMleTargetInfo>(Triple, Opts);
     case llvm::Triple::NaCl:
       return new NaClTargetInfo<ARMleTargetInfo>(Triple, Opts);
+    case llvm::Triple::WinCE:
+        return new WinceARMTargetInfo(Triple, Opts);
     case llvm::Triple::Win32:
       switch (Triple.getEnvironment()) {
       case llvm::Triple::Cygnus:

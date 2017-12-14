@@ -509,8 +509,9 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
     bool ThumbDefault = IsMProfile || (ARM::parseArchVersion(Suffix) == 7 && 
                                        getTriple().isOSBinFormatMachO());
     // FIXME: this is invalid for WindowsCE
-    if (getTriple().isOSWindows())
+    if (getTriple().getOS() == Triple::Win32)
       ThumbDefault = true;
+
     std::string ArchName;
     if (IsBigEndian)
       ArchName = "armeb";
@@ -521,7 +522,7 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
     // Windows is always thumb.
     if ((InputType != types::TY_PP_Asm && Args.hasFlag(options::OPT_mthumb,
          options::OPT_mno_thumb, ThumbDefault)) || IsMProfile ||
-         getTriple().isOSWindows()) {
+         getTriple().getOS() == Triple::Win32) {
       if (IsBigEndian)
         ArchName = "thumbeb";
       else
